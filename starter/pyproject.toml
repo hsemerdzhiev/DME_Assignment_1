@@ -28,6 +28,7 @@ quantum-lake = "quantum_lake_student.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/quantum_lake_student"]
+include = ["src/quantum_lake_student/gold/*.sql"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
