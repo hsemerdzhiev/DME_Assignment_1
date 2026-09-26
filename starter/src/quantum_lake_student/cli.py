@@ -10,7 +10,7 @@ from rich.table import Table
 
 from .config import Settings
 from .connections import bronze_inventory, check_platform
-from .stages import prepare_data, register_sources
+from .stages import load_postgres, prepare_data, register_sources
 
 
 console = Console()
@@ -34,14 +34,14 @@ def command_inventory(settings: Settings) -> int:
 
 
 def command_run(_: Settings) -> int:
-    """Part I: register Bronze, then build Silver. Gold and ML stages follow."""
+    """Part I: register Bronze, build Silver, load Gold. The ML export follows."""
     import uuid
 
     run_id = str(uuid.uuid4())
     table = Table(title=f"Part I run {run_id}")
     for column in ("stage", "read", "accepted", "issues", "seconds"):
         table.add_column(column, justify="right" if column != "stage" else "left")
-    for stage in (register_sources, prepare_data):
+    for stage in (register_sources, prepare_data, load_postgres):
         result = stage.run(run_id)
         seconds = (result.finished_at - result.started_at).total_seconds()
         table.add_row(result.stage, f"{result.input_count:,}", f"{result.output_count:,}", str(result.issue_count), f"{seconds:.1f}")
