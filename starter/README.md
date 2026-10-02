@@ -17,11 +17,10 @@ Read these documents in order:
 9. `../assignment/part-2-ai-ml.md`
 10. `../assignment/rubric.md`
 
-The starter deliberately does not contain domain transformations, target
-business tables, feature builders, or fitted models. `make check` verifies
-connections, `make inventory` lists the three Bronze objects, and `make test`
-checks low-level utilities. `make run` and `make train` stop at separate
-unimplemented boundaries; replace both with your orchestrated stages.
+The implementation includes source registration, the six Silver tables, the
+PostgreSQL Gold model, both ML exports, and Task A training. `make check`
+verifies connections, `make inventory` lists Bronze objects, `make run` builds
+the Part I outputs, and `make train` runs Task A. Tasks B and C remain open.
 
 Suggested source layout:
 
@@ -56,3 +55,24 @@ committed to version control. Write required run evidence and outputs under the
 
 The AI/ML stage is a downstream consumer check. A particular model score or an
 improvement over a supplied decoder is not part of the grade.
+
+## Implemented pipeline and Task A
+
+From the repository root, start and verify the platform with `make bootstrap`.
+Then run:
+
+```bash
+make pipeline
+make train-a
+docker compose exec -T workspace make test
+```
+
+`make run` now registers Bronze, builds Silver, loads Gold, exports both
+prescribed `ml/ml_*_decoder_example.parquet` tables, and writes Part I run,
+count, trace, and SQL-analysis evidence. Generated ML files are ignored by Git.
+`make train` implements Task A only: weighted prior and weighted logistic
+regression. It regenerates models and the prescribed files under
+`results/part2/`; Tasks B and C remain unimplemented. Training requires both
+ML files for contract validation and hash recording. It never reads Gold,
+Silver, or Bronze. The saved Gold ML views resolve prediction IDs to source
+records. Timings vary across runs; predictions and metrics are deterministic.
