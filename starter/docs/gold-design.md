@@ -28,8 +28,8 @@ measured costs, and the relationship we investigated and rejected.
 
 Both data sources describe distance-3 surface-code experiments, so they share
 one `experiment` table with common `distance`, `rounds`, and `check_count`
-columns and a `kind` column that says which they are. CHECK constraints make
-the kind-specific columns mandatory for one kind and forbidden for the other.
+columns and a `kind` column that says which they are. CHECK constraints require the relevant kind-specific columns. The transformer
+leaves unrelated columns null.
 No column, key, or view relates a simulated row to a hardware row.
 
 QASMBench circuits are not experiments and have no row in `experiment`. They
@@ -134,3 +134,21 @@ Bronze object and member → `results/part1/source_trace.parquet` →
 `source_record_id` → Gold key (`shot_id`, `observation_id`, ...) → Gold row.
 The ML export will hash Gold keys into `example_id` so the chain continues
 into Part II.
+
+## Investigated and rejected: QASMBench-to-experiment row-level join
+
+QASMBench identifies benchmark families and source/transpiled circuit variants.
+Google identifies hardware experiments, processor locations, and shot indices;
+the simulations identify fault-rate sweeps. None supplies a shared circuit or
+shot key connecting a QASMBench program to an experiment. Similar code-family
+names describe context and do not establish identity. Gold therefore keeps
+circuit relationships separate and introduces no circuit-to-experiment key.
+
+## ML hand-off
+
+Committed queries under `gold/queries/` create `gold.ml_syndrome_source` and
+`gold.ml_google_source`. Each view exposes a stable `example_id` and its
+`gold_record_id`, providing the resolution relation required by the assignment.
+The export validates actual membership in `source_trace.parquet`, applies the
+supplied split helpers, and publishes both exact ML contracts locally and in
+MinIO. `trace_examples.json` demonstrates one example from each ML table.

@@ -14,6 +14,8 @@ help:
 	@echo "  make up              Start PostgreSQL, MinIO, Adminer, and JupyterLab"
 	@echo "  make seed            Copy course inputs into the Bronze data area"
 	@echo "  make verify          Check that the platform and data are ready"
+	@echo "  make pipeline        Build Silver, Gold, ML tables, and Part I evidence"
+	@echo "  make train-a         Regenerate Task A models and Part II results"
 	@echo "  make ps              Show service status"
 	@echo "  make logs            Follow service logs"
 	@echo "  make down            Stop services while retaining data volumes"
@@ -60,3 +62,11 @@ down:
 reset-platform:
 	@echo "Removing only the Docker volumes owned by this course platform."
 	$(COMPOSE) down --volumes --remove-orphans
+
+.PHONY: pipeline train-a
+
+pipeline:
+	$(COMPOSE) exec -T -e CODE_REVISION=$$(git rev-parse HEAD) workspace make run
+
+train-a:
+	$(COMPOSE) run --rm --no-deps -e CODE_REVISION=$$(git rev-parse HEAD) workspace make train

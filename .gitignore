@@ -10,3 +10,5 @@ starter/.coverage
 **/.ipynb_checkpoints/
 starter/results/part1/
 starter/results/part2/
+
+starter/ml/
