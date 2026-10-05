@@ -17,6 +17,7 @@ import pytest
 from quantum_lake_student.config import Settings
 from quantum_lake_student.connections import minio_client
 from quantum_lake_student.silver import schemas
+from quantum_lake_student.silver.common import RunStop
 from quantum_lake_student.stages import prepare_data
 
 EXPECTED_ROWS = {
@@ -117,3 +118,22 @@ def test_second_run_produces_identical_identifiers(outcome) -> None:
     for name, path in schemas.SILVER_PATHS.items():
         again = _read(client, settings.s3_bucket, prepare_data.SILVER_PREFIX + path)
         assert again["source_record_id"].to_pylist() == outcome["tables"][name]["source_record_id"].to_pylist(), name
+
+
+def test_stopped_parse_saves_the_current_run_issue(monkeypatch, tmp_path):
+    observed = "missing-member:" + "x" * 500
+    monkeypatch.setattr(prepare_data, "RESULTS_ROOT", tmp_path)
+    monkeypatch.setattr(prepare_data, "minio_client", lambda settings: object())
+    monkeypatch.setattr(prepare_data, "read_bronze", lambda client, bucket: [])
+
+    def fail(objects, issues):
+        raise issues.stop("missing_companion", "google_qec", "experiment", None, observed, "required member absent")
+
+    monkeypatch.setattr(prepare_data, "build_tables", fail)
+    with pytest.raises(RunStop, match="required member absent"):
+        prepare_data.prepare("failed-run", Settings.from_environment())
+    rows = pq.read_table(tmp_path / "part1/data_issues.parquet").to_pylist()
+    assert len(rows) == 1
+    assert rows[0]["run_id"] == "failed-run"
+    assert rows[0]["observed_value"] == observed
+    assert rows[0]["action"] == "stop"

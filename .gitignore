@@ -12,3 +12,5 @@ starter/results/part1/
 starter/results/part2/
 
 starter/ml/
+
+datasets/student-bundle/core/raw/**/*.zip

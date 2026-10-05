@@ -86,11 +86,10 @@ class IssueLog:
         return sum(issue.action == REJECT for issue in self.issues)
 
 
-def _text(value: object, limit: int = 200) -> str | None:
+def _text(value: object) -> str | None:
     if value is None:
         return None
-    text = str(value)
-    return text if len(text) <= limit else text[: limit - 3] + "..."
+    return str(value)
 
 
 @dataclass

@@ -8,7 +8,7 @@ import pytest
 
 from quantum_lake_student.config import Settings
 from quantum_lake_student.connections import minio_client, postgres_connection
-from quantum_lake_student.stages import load_postgres
+from quantum_lake_student.stages import load_postgres, prepare_data
 
 
 @pytest.fixture(scope="module")
@@ -16,20 +16,12 @@ def settings() -> Settings:
     return Settings.from_environment()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="module", autouse=True)
 def loaded(settings: Settings):
-    """Load Gold once; remember the counts of the load that preceded it, if any."""
-    with postgres_connection(settings) as connection:
-        previous = connection.execute(
-            "SELECT row_counts FROM gold.gold_load WHERE to_regclass('gold.gold_load') IS NOT NULL"
-        ).fetchone() if _schema_exists(connection) else None
     run_id = f"pytest-{uuid.uuid4()}"
+    prepare_data.prepare(run_id, settings)
     result, counts = load_postgres.load(run_id, settings)
-    return {"run_id": run_id, "result": result, "counts": counts, "previous": previous[0] if previous else None}
-
-
-def _schema_exists(connection) -> bool:
-    return connection.execute("SELECT 1 FROM pg_namespace WHERE nspname = 'gold'").fetchone() is not None
+    return {"run_id": run_id, "result": result, "counts": counts}
 
 
 def _one(settings: Settings, sql: str, *params):
@@ -75,10 +67,9 @@ def test_gold_keys_resolve_to_silver_trace_ids(settings) -> None:
         assert _one(settings, f"SELECT count(*) FROM gold.{table} WHERE {key} !~ '^[0-9a-f]{{32}}$'") == (0,), table
 
 
-def test_rerun_reproduces_the_previous_counts(loaded) -> None:
-    if loaded["previous"] is None:
-        pytest.skip("no earlier Gold load to compare against")
-    assert {f"gold.{k}": v for k, v in loaded["previous"].items()} == loaded["counts"]
+def test_rerun_reproduces_the_previous_counts(loaded, settings) -> None:
+    _, counts = load_postgres.load(loaded["run_id"], settings)
+    assert counts == loaded["counts"]
 
 
 def test_failed_load_leaves_previous_gold_untouched(loaded, settings) -> None:

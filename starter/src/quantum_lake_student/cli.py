@@ -79,7 +79,12 @@ def command_run(_: Settings) -> int:
 def command_train(_: Settings) -> int:
     import uuid
     result = train.run(str(uuid.uuid4()))
-    console.print(f"Task A: wrote {result.output_count:,} predictions under results/part2/")
+    console.print(f"Tasks A, B and C: wrote {result.output_count:,} predictions under results/part2/")
+    return 0
+
+
+def command_trace(_: Settings) -> int:
+    build_ml_tables.attach_predictions()
     return 0
 
 
@@ -87,7 +92,7 @@ def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument(
         "command",
-        choices=("check", "inventory", "run", "train"),
+        choices=("check", "inventory", "run", "train", "trace"),
         help="Action to perform",
     )
     return result
@@ -101,6 +106,7 @@ def main() -> None:
         "inventory": command_inventory,
         "run": command_run,
         "train": command_train,
+        "trace": command_trace,
     }
     raise SystemExit(commands[arguments.command](settings))
 

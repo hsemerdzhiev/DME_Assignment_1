@@ -45,7 +45,7 @@ fault rate. `syndrome_pattern` stores each once with its fired-check count;
 `syndrome_observation` references it. This makes "how does the frequency of
 this pattern change with fault rate" a join instead of a byte comparison and
 lets the same pattern legitimately carry both labels within one experiment
-(the unique key is experiment, pattern, label). Cost: a 6 MB table and one
+(the unique key is experiment, pattern, label). Cost: a 6 MiB table and one
 join in the ML export.
 
 **Decoder predictions are long, not wide.** Silver has four boolean columns.
@@ -53,18 +53,27 @@ Gold has a `decoder` dimension and one `decoder_prediction` row per shot per
 decoder. Queries such as "compare decoders by distance" become a GROUP BY on
 `decoder_id`, a fifth decoder is a new row rather than a new column, and a
 decoder mistake is computed in the `decoder_outcome` view rather than stored.
-Cost: 1,000,000 rows and 184 MB including indexes, versus roughly 20 MB for
-four columns on `shot`. We accepted this because the analysis questions and
+Cost: 1,000,000 rows and 184 MiB including indexes. Copies of `shot` with and
+without four added prediction columns both occupied 83.5 MiB, using the same
+keys and row order. The four booleans fit into existing row padding.
+We accepted the larger table because the analysis questions and
 Part II Task B are all about comparing decoders as things.
 
-**Detector bits stay packed; positions are summarised.** Three shapes were
-measured for the 10,446,925 fired detector events in the release:
+**Detector bits stay packed; positions are summarised.** The release contains
+10,446,925 fired detector events. All three layouts were populated from the
+250,000 shots. Sizes were measured with `pg_total_relation_size` on PostgreSQL
+16.9 and include indexes, the remaining shot columns and `detector_summary`.
 
-| Shape | Rows | Size |
+| Shape | Rows | Total size |
 | --- | --- | --- |
-| Packed `bytea` on `shot` plus `detector_summary` (chosen) | 250,000 + 1,400 | 83 MB + 248 kB |
-| One row per fired detector | 10,446,925 | about 700 MB before indexes |
-| One row per detector position per shot | 110,000,000 | not attempted |
+| Packed `bytea` on `shot` plus `detector_summary` (chosen) | 250,000 + 1,400 | 83.6 MiB |
+| One row per fired detector | 250,000 + 10,446,925 + 1,400 | 1,341.8 MiB |
+| One row per detector position per shot | 250,000 + 70,000,000 + 1,400 | 9,127.6 MiB |
+
+The expanded layouts replace `shot.detector_bits` with rows keyed by
+`(shot_id text, detector_index integer)`. The dense layout also stores
+`fired boolean`. The other shot columns occupy 72.8 MiB, and
+`detector_summary` occupies 248 KiB in every layout.
 
 The packed row is exactly what the ML export must reproduce, so keeping it
 means the export is a projection rather than a re-packing. `detector_summary`
@@ -95,7 +104,7 @@ being declared classical registers.
 every table in binary form, runs the checks, drops `gold`, and renames
 `gold_build` to `gold`, all inside one transaction. PostgreSQL DDL is
 transactional, so a failure anywhere rolls the whole thing back and the
-previous `gold` remains readable throughout. A full load takes about 21
+previous `gold` is retained on failure. A full load takes about 21
 seconds. `tests/test_load_postgres.py` proves the rollback by loading a
 duplicate decoder key and checking the earlier `gold_load` row is still the
 only one.
@@ -132,8 +141,8 @@ answer questions about each source separately.
 
 Bronze object and member → `results/part1/source_trace.parquet` →
 `source_record_id` → Gold key (`shot_id`, `observation_id`, ...) → Gold row.
-The ML export will hash Gold keys into `example_id` so the chain continues
-into Part II.
+The Gold ML views expose `example_id` and `gold_record_id`, so the chain
+continues into Part II.
 
 ## Investigated and rejected: QASMBench-to-experiment row-level join
 
