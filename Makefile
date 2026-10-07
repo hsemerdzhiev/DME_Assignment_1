@@ -63,18 +63,10 @@ reset-platform:
 	@echo "Removing only the Docker volumes owned by this course platform."
 	$(COMPOSE) down --volumes --remove-orphans
 
-<<<<<<< HEAD
-.PHONY: pipeline train-a
-=======
 .PHONY: pipeline train
->>>>>>> 973216a500726763980bbef36643890932316348
 
 pipeline:
 	$(COMPOSE) exec -T -e CODE_REVISION=$$(git rev-parse HEAD) workspace make run
 
-<<<<<<< HEAD
-train-a:
-=======
 train:
->>>>>>> 973216a500726763980bbef36643890932316348
 	$(COMPOSE) run --rm --no-deps -e CODE_REVISION=$$(git rev-parse HEAD) workspace make train
