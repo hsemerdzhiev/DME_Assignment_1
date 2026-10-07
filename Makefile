@@ -15,7 +15,7 @@ help:
 	@echo "  make seed            Copy course inputs into the Bronze data area"
 	@echo "  make verify          Check that the platform and data are ready"
 	@echo "  make pipeline        Build Silver, Gold, ML tables, and Part I evidence"
-	@echo "  make train-a         Regenerate Task A models and Part II results"
+	@echo "  make train           Run Tasks A, B and C"
 	@echo "  make ps              Show service status"
 	@echo "  make logs            Follow service logs"
 	@echo "  make down            Stop services while retaining data volumes"
@@ -63,10 +63,18 @@ reset-platform:
 	@echo "Removing only the Docker volumes owned by this course platform."
 	$(COMPOSE) down --volumes --remove-orphans
 
+<<<<<<< HEAD
 .PHONY: pipeline train-a
+=======
+.PHONY: pipeline train
+>>>>>>> 973216a500726763980bbef36643890932316348
 
 pipeline:
 	$(COMPOSE) exec -T -e CODE_REVISION=$$(git rev-parse HEAD) workspace make run
 
+<<<<<<< HEAD
 train-a:
+=======
+train:
+>>>>>>> 973216a500726763980bbef36643890932316348
 	$(COMPOSE) run --rm --no-deps -e CODE_REVISION=$$(git rev-parse HEAD) workspace make train

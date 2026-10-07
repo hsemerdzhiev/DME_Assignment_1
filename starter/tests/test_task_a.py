@@ -6,7 +6,7 @@ import pyarrow.parquet as pq
 import pytest
 from quantum_lake_student.ml_contracts import SYNDROME, GOOGLE, validate
 from quantum_lake_student.ml import GOOGLE_META_PREDICTION_COLUMNS
-from quantum_lake_student.stages.train import evaluate, run
+from quantum_lake_student.stages.train import evaluate, run_task_a as run
 
 
 def inputs(root):

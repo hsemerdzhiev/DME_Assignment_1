@@ -27,7 +27,9 @@ from quantum_lake_student.config import Settings
 from quantum_lake_student.connections import minio_client
 from quantum_lake_student.models import StageResult
 from quantum_lake_student.silver import google, qasm, schemas, syndromes
-from quantum_lake_student.silver.common import BronzeObject, IssueLog, TraceRows, rows_to_table
+
+from quantum_lake_student.silver.common import BronzeObject, IssueLog, RunStop, TraceRows, rows_to_table
+
 from quantum_lake_student.stages.register_sources import BRONZE_PREFIX, load_manifest
 
 STAGE = "prepare_data"
@@ -117,7 +119,14 @@ def prepare(run_id: str, settings: Settings | None = None) -> tuple[StageResult,
     issues = IssueLog()
 
     objects = read_bronze(client, settings.s3_bucket)
-    tables, trace, read = build_tables(objects, issues)  # raises RunStop on a blocking check
+    try:
+        tables, trace, read = build_tables(objects, issues)
+    except RunStop:
+        # Keep the original invalid value and reason even when parsing stops.
+        part1 = RESULTS_ROOT / "part1"
+        part1.mkdir(parents=True, exist_ok=True)
+        pq.write_table(issues_table(issues, run_id), part1 / "data_issues.parquet")
+        raise
 
     accepted = {name: table.num_rows for name, table in tables.items()}
     rejected = reconcile(read, accepted, issues)

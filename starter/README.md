@@ -18,9 +18,9 @@ Read these documents in order:
 10. `../assignment/rubric.md`
 
 The implementation includes source registration, the six Silver tables, the
-PostgreSQL Gold model, both ML exports, and Task A training. `make check`
+PostgreSQL Gold model, both ML exports, and Tasks A, B and C. `make check`
 verifies connections, `make inventory` lists Bronze objects, `make run` builds
-the Part I outputs, and `make train` runs Task A. Tasks B and C remain open.
+the Part I outputs, and `make train` runs Tasks A, B and C.
 
 Suggested source layout:
 
@@ -56,23 +56,46 @@ committed to version control. Write required run evidence and outputs under the
 The AI/ML stage is a downstream consumer check. A particular model score or an
 improvement over a supplied decoder is not part of the grade.
 
+<<<<<<< HEAD
 ## Implemented pipeline and Task A
+=======
+## Implemented pipeline and Tasks A, B and C
+>>>>>>> 973216a500726763980bbef36643890932316348
 
 From the repository root, start and verify the platform with `make bootstrap`.
 Then run:
 
 ```bash
 make pipeline
+<<<<<<< HEAD
 make train-a
+=======
+make train
+>>>>>>> 973216a500726763980bbef36643890932316348
 docker compose exec -T workspace make test
 ```
 
 `make run` now registers Bronze, builds Silver, loads Gold, exports both
 prescribed `ml/ml_*_decoder_example.parquet` tables, and writes Part I run,
 count, trace, and SQL-analysis evidence. Generated ML files are ignored by Git.
+<<<<<<< HEAD
 `make train` implements Task A only: weighted prior and weighted logistic
 regression. It regenerates models and the prescribed files under
 `results/part2/`; Tasks B and C remain unimplemented. Training requires both
 ML files for contract validation and hash recording. It never reads Gold,
 Silver, or Bronze. The saved Gold ML views resolve prediction IDs to source
 records. Timings vary across runs; predictions and metrics are deterministic.
+=======
+`make train` runs Task A's weighted prior and weighted logistic regression,
+Task B's Google decoder comparisons, and Task C's raw-detector MLP. It
+regenerates models and the prescribed files under `results/part2/`. Training
+requires both ML files for contract validation and hash recording. It never reads Gold,
+Silver, or Bronze. The saved Gold ML views resolve prediction IDs to source
+records. Timings vary across runs; predictions and metrics are deterministic.
+
+In `stages/train.py`, the task functions are `run_task_a`, `run_task_b` and
+`run_task_c`. The report uses the same task headings.
+
+After training, run `docker compose exec -T workspace python -m quantum_lake_student.cli trace`
+to attach saved test predictions to the two source examples.
+>>>>>>> 973216a500726763980bbef36643890932316348
