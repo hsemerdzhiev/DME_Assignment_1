@@ -21,6 +21,7 @@ from quantum_lake_student.ml import (GOOGLE_META_PREDICTION_COLUMNS, google_meta
                                     syndrome_model_input, unpack_little_endian_bits, weighted_logical_error_rate)
 from quantum_lake_student.ml_contracts import CONTRACTS, validate
 from quantum_lake_student.models import StageResult
+from quantum_lake_student.stages.part2_report import write_report
 
 SEED = 42
 PREDICTIONS = pa.schema([('example_id', pa.string()), ('model_id', pa.string()), ('label', pa.bool_()),
@@ -94,39 +95,25 @@ def run_task_a(model_run_id, ml_root=Path('ml'), results_root=Path('results')):
               'split_rule': {'validation_fault_rate': 0.0005, 'test_fault_rate': 0.005, 'train': 'other five files'},
               'model_parameters': model.get_params(), 'threshold': 0.5,
               'started_at': result.started_at.isoformat(), 'finished_at': datetime.now(UTC).isoformat(),
-              'timings': metrics}
+              'timings': metrics, 'report_context': {'task_a': task_a_context(y, w, splits, rows)}}
     (output / 'run.json').write_text(json.dumps(record, indent=2) + '\n')
-    lines = ['# Task A: weighted syndrome decoder', '',
-        'Inputs are the 16 syndrome values in round-major order; the target is logical_error_label. '
-        'Both ML table contracts are checked, and training reads only ML Parquet files.', '',
-        'The prior is the training-weighted positive-label frequency. Logistic regression is a linear '
-        'probabilistic classifier fitted with physical sample weights. C=1 and threshold=0.5 were fixed '
-        'before evaluation; validation and test data were not used for fitting or selection.', '',
-        '| Model | Test weighted LER | Test weighted balanced accuracy | Test weighted Brier |',
-        '| --- | ---: | ---: | ---: |']
-    for name, values in metrics.items():
-        m = values['test']
-        lines.append(f"| {name} | {m['logical_error_rate']:.6f} | {m['balanced_accuracy']:.6f} | {m['brier_score']:.6f} |")
-    test_positive = float(np.average(y[splits == 'test'], weights=w[splits == 'test']))
-    lines += ['', f'Positive labels account for {prior:.2%} of training observations and '
-              f'{test_positive:.2%} of test observations, using physical weights. '
-              'The prior always predicts the majority label. Its low error rate reflects this '
-              'imbalance; its balanced accuracy is 0.5.']
-    baseline_ler = metrics['task_a_weighted_prior']['test']['logical_error_rate']
-    linear_ler = metrics['task_a_logistic_regression']['test']['logical_error_rate']
-    lines += ['', f'The linear model has {"higher" if linear_ler > baseline_ler else "lower or equal"} '
-              'test logical-error rate than the prior. Balanced accuracy and Brier score measure '
-              'different aspects of the predictions; the table reports all three without choosing '
-              'settings from the test results.']
-    lines += ['', 'The flat vector preserves round order but does not explicitly encode check geometry or '
-        'interactions. Identical syndromes may have either label. Held-out fault rates differ from training '
-        'rates, so these results describe this supplied split rather than a causal effect of noise or '
-        'general performance on hardware. Weights represent physical repetitions and are not features.', '',
-        'Timings are in metrics.json; prediction IDs resolve through the Gold ML views.']
-    (output / 'report.md').write_text('\n'.join(lines) + '\n')
+    write_report(output)
     result.input_count, result.output_count = len(rows), len(predictions)
     result.finish()
     return result
+
+
+def task_a_context(y, w, splits, rows):
+    """Weighted label rates per split and per fault rate, for the report."""
+    rates = np.asarray([r['physical_fault_rate'] for r in rows], dtype=np.float64)
+    return {'split_rows': {s: int((splits == s).sum()) for s in ('train', 'validation', 'test')},
+            'physical_observations': {s: int(w[splits == s].sum()) for s in ('train', 'validation', 'test')},
+            'weighted_positive_rate': {s: float(np.average(y[splits == s], weights=w[splits == s]))
+                                       for s in ('train', 'validation', 'test') if (splits == s).any()},
+            'weighted_positive_rate_by_fault_rate': [
+                {'physical_fault_rate': float(rate), 'split': str(splits[rates == rate][0]),
+                 'weighted_positive_rate': float(np.average(y[rates == rate], weights=w[rates == rate]))}
+                for rate in sorted(set(rates.tolist()))]}
 
 
 def _fit_google(model, x, y):
@@ -184,6 +171,27 @@ def decoder_overlap(rows):
             for a, b in combinations(GOOGLE_META_PREDICTION_COLUMNS, 2)]
 
 
+def decoder_agreement(rows, predictions, model_id):
+    """How many supplied decoders are wrong per test shot, and where the combined model helps."""
+    test = [r for r in rows if r['data_split'] == 'test']
+    y = np.asarray([r['actual_observable_flip'] for r in test], dtype=bool)
+    errors = np.stack([np.asarray([r[c] for r in test], dtype=bool) != y
+                       for c in GOOGLE_META_PREDICTION_COLUMNS]) if test else np.zeros((4, 0), dtype=bool)
+    wrong = errors.sum(axis=0)
+    combined = {p['example_id']: p['prediction'] for p in predictions
+                if p['model_id'] == model_id and p['split'] == 'test'}
+    combined_error = np.asarray([combined[r['example_id']] != r['actual_observable_flip'] for r in test], dtype=bool)
+    best = int(np.argmin(errors.mean(axis=1))) if test else 0
+    disagree = (wrong > 0) & (wrong < 4)
+    return {'test_rows': len(test),
+            'shots_by_decoders_wrong': {str(k): int((wrong == k).sum()) for k in range(5)},
+            'combined_errors_by_decoders_wrong': {str(k): int((combined_error & (wrong == k)).sum()) for k in range(5)},
+            'combined_error_rate_when_decoders_disagree': float(combined_error[disagree].mean()) if disagree.any() else None,
+            'best_supplied_decoder': GOOGLE_META_PREDICTION_COLUMNS[best],
+            'combined_right_best_wrong': int((~combined_error & errors[best]).sum()),
+            'combined_wrong_best_right': int((combined_error & ~errors[best]).sum())}
+
+
 def run_task_b(rows, distance):
     rows = [r for r in rows if r['distance'] == distance]
     x = np.asarray([google_meta_model_input(r) for r in rows], dtype=np.float64)
@@ -197,10 +205,13 @@ def run_task_b(rows, distance):
     name, prior_name = f'task_b_d{distance}_logistic_regression', f'task_b_d{distance}_prior'
     result = _score_google(rows, x, y, {name: model}, {prior_name: prior},
                            {name: seconds, prior_name: prior_seconds}, supplied=True)
+    feature_order = ['detector_event_density', *GOOGLE_META_PREDICTION_COLUMNS]
     result['settings'] = {name: {'parameters': model.get_params(), 'threshold': 0.5,
-                                 'feature_order': ['detector_event_density', *GOOGLE_META_PREDICTION_COLUMNS],
-                                 'warnings': messages}}
+                                 'feature_order': feature_order, 'warnings': messages,
+                                 'coefficients': dict(zip(feature_order, map(float, model.coef_[0]), strict=True)),
+                                 'intercept': float(model.intercept_[0])}}
     result['decoder_overlap'] = decoder_overlap(rows)
+    result['context'] = decoder_agreement(rows, result['predictions'], name)
     return result
 
 
@@ -218,64 +229,16 @@ def run_task_c(rows):
     result['settings'] = {name: {'parameters': model.get_params(), 'threshold': 0.5,
                                  'feature_order': [f'detector_{i}' for i in range(200)],
                                  'warnings': messages, 'iterations': int(model.n_iter_)}}
+    test = np.asarray([r['data_split'] == 'test' for r in rows])
+    train_prior = float(y[mask].mean()) if mask.any() else 0.0
+    result['context'] = {
+        'test_positive_rate': float(y[test].mean()) if test.any() else None,
+        'training_positive_rate': train_prior,
+        'majority_baseline_test_logical_error_rate': float(np.mean(y[test] != (train_prior >= 0.5))) if test.any() else None,
+        'supplied_decoder_test_logical_error_rate': {
+            c: float(np.mean(np.asarray([r[c] for r in rows], dtype=bool)[test] != y[test])) if test.any() else None
+            for c in GOOGLE_META_PREDICTION_COLUMNS}}
     return result
-
-
-def _test_table(metrics):
-    lines = ['| Model | Test rows | Logical-error rate | Balanced accuracy | Brier |',
-             '| --- | ---: | ---: | ---: | ---: |']
-    for name, scores in metrics.items():
-        m = scores['test']
-        brier = 'not applicable' if m['brier_score'] is None else f"{m['brier_score']:.6f}"
-        lines.append(f"| {name} | {m['aggregate_rows']:,} | {m['logical_error_rate']:.6f} | "
-                     f"{m['balanced_accuracy']:.6f} | {brier} |")
-    return lines
-
-
-def _google_report(tasks):
-    lines = ['', '# Task B: supplied and combined Google decoders', '',
-             'The target is actual_observable_flip. Each distance has its own training prior and '
-             'logistic regression. The five inputs are detector-event density and the four supplied '
-             'predictions, in the order recorded in run.json. The linear model learns a weight for '
-             'each input. C=1 and threshold=0.5 are fixed; fitting uses only training shots. '
-             'All six comparisons within a distance use the same test shots.']
-    for distance in (3, 5):
-        scores = tasks[f'task_b_d{distance}']['metrics']
-        supplied = [scores[f'task_b_d{distance}_{c.removesuffix("_prediction")}']['test']['logical_error_rate']
-                    for c in GOOGLE_META_PREDICTION_COLUMNS]
-        delta = scores[f'task_b_d{distance}_logistic_regression']['test']['logical_error_rate'] - min(supplied)
-        lines += ['', f'## Distance {distance}', '', *_test_table(scores), '',
-                  f'The combined model changes logical-error rate by {delta:+.6f} relative to '
-                  'the lowest-error supplied decoder on these test shots.']
-    lines += ['', '## Decoder errors', '',
-              '| Distance | First decoder | Second decoder | Both wrong | Only first wrong | Only second wrong |',
-              '| --- | --- | --- | ---: | ---: | ---: |']
-    for distance in (3, 5):
-        for p in tasks[f'task_b_d{distance}']['decoder_overlap']:
-            lines.append(f"| {distance} | {p['first']} | {p['second']} | {p['both_wrong']:,} | "
-                         f"{p['only_first_wrong']:,} | {p['only_second_wrong']:,} |")
-    lines += ['', 'The one-sided errors show cases where one decoder could correct another. '
-              'The combined model needs inputs that distinguish those cases. Shared mistakes and '
-              'a linear decision function limit what it can correct. Brier scores are not applicable '
-              'to the supplied boolean predictions.', '',
-              '# Task C: bounded raw-detector prototype', '',
-              'One MLP with 32 ReLU hidden units predicts actual_observable_flip from 200 unpacked '
-              'detector bits. It uses only distance-three shots with shot_index below 12,500. '
-              'The inputs use little-endian bit order and are unscaled. The supplied split is retained; '
-              'internal validation splitting is disabled. Adam runs for at most 50 iterations with seed 42.', '',
-              *_test_table(tasks['task_c']['metrics']), '',
-              'The hidden layer can learn combinations of detector bits. The flat vector does not '
-              'explicitly describe detector coordinates, neighbouring detectors or changes over QEC '
-              'rounds. The model must learn those relationships from the bit patterns. '
-              'This test subset is smaller than Task B\'s, so the two result tables use different shots.', '',
-              'metrics.json includes validation scores and training and prediction times. run.json '
-              'records feature order, settings and fitting warnings. Elapsed times can vary even when '
-              'predictions match. These results describe the supplied release and partitions.']
-    for task in tasks.values():
-        for name, settings in task['settings'].items():
-            for message in settings['warnings']:
-                lines += ['', f'{name}: {message}']
-    return '\n'.join(lines) + '\n'
 
 
 def run(model_run_id, ml_root=Path('ml'), results_root=Path('results')):
@@ -309,10 +272,10 @@ def run(model_run_id, ml_root=Path('ml'), results_root=Path('results')):
                               'task_c': 'distance == 3 and shot_index < 12500'},
                   split_rows={name: task['split_rows'] for name, task in tasks.items()},
                   decoder_overlap={str(d): tasks[f'task_b_d{d}']['decoder_overlap'] for d in (3, 5)})
+    record['report_context'].update({name: task['context'] for name, task in tasks.items()})
     record['dependency_versions']['threadpoolctl'] = version('threadpoolctl')
     (output / 'run.json').write_text(json.dumps(record, indent=2) + '\n')
-    with (output / 'report.md').open('a') as report:
-        report.write(_google_report(tasks))
+    write_report(output)
     result.stage = 'train'
     result.input_count += len(rows)
     result.output_count = len(predictions)

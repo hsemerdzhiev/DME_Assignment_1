@@ -84,7 +84,7 @@ def _prepare_member(obj: BronzeObject, member: str, text: str, issues: IssueLog,
     if header != DOCUMENTED_HEADER:
         issues.info(
             "syn_header_label_vs_labels", SOURCE, member, "row 1", header,
-            "README documents column 'label'; the file uses 'labels'. Read as documented.",
+            "README documents column 'label'; the file uses 'labels'. Columns are read by position, so 'labels' is used as the label.",
         )
 
     accepted, quantity_total = 0, 0
