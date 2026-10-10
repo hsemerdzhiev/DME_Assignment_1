@@ -149,10 +149,7 @@ def _task_a(metrics, record):
     lines += ['', 'The split holds out whole fault rates, and the label rate depends strongly on the fault rate, '
               'which is not a model input:', '',
               '| Physical fault rate | Split | Logical-error rate (weighted) |', '| ---: | --- | ---: |',
-              *[f"| {r['physical_fault_rate']:g} | {r['split']} | {r['weighted_positive_rate']:.4%} |" for r in by_rate],
-              '', 'The test rate is outside most of the training range, so the model is evaluated under a shift '
-              'in label frequency. This describes the supplied split; it does not show how either model would '
-              'behave on hardware data.']
+              *[f"| {r['physical_fault_rate']:g} | {r['split']} | {r['weighted_positive_rate']:.4%} |" for r in by_rate]]
     return lines
 
 
@@ -219,22 +216,17 @@ def _task_c(metrics, record):
              f"({m['brier_score']:.4f}) is worse than the 0.25 of a constant 0.5 forecast, so its probabilities are "
              f"over-confident. Training stopped at {settings['iterations']} iterations"
              + (' without converging (warning in `run.json`)' if settings['warnings'] else '')
-             + '. This is a negative result for this bounded setup, reported as observed. It confirms that the '
-             'bits are unpacked in the documented order and that the pipeline runs end to end; it says nothing '
-             'about what a larger or structured model could learn.', '',
+             + '.', '',
              'What the flat 200-bit vector does not show explicitly:', '',
              '- **Position.** Index *i* stands for a detector at some qubit location, but the coordinates are not '
              'in the ML table, so two bits from neighbouring stabilizers look as unrelated as two distant ones.',
              '- **Neighbourhood.** Errors appear as pairs or chains of nearby fired detectors. The model sees no '
              'adjacency and has to learn every local pattern separately at every position.',
-             '- **Time.** The bits come from 25 rounds of 8 stabilizers, but the vector does not mark which bits '
-             'are the same stabilizer in successive rounds, so a pattern that repeats in time must be relearned '
-             'for each round.',
+             '- **Time.** The vector does not mark the round of each detector or link the same stabilizer across '
+             'rounds. The model has to learn these relationships from the bit patterns.',
              '- **Context.** The processor location of each experiment and the boundary that defines the logical '
              'observable are not inputs, although they decide which detector chains flip the outcome.',
-             '', f"With {record['split_rows']['task_c']['train']:,} training shots and 200 inputs, a small MLP "
-             'without this structure has little chance to recover it, which is consistent with the chance-level result. Task C uses a smaller test subset '
-             'than Task B, so its numbers are only compared with the reference values above.']
+             '', 'Task C uses fewer test shots than Task B. The reference results above use the same shots as Task C.']
     return lines
 
 

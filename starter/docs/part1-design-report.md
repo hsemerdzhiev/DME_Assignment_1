@@ -1,10 +1,8 @@
 # Part I design report: QEC data pipeline
 
-This report explains the data-management half of the assignment: what the three sources contain, how the
-pipeline turns them into checked Silver tables, a PostgreSQL Gold model and two ML tables, and the evidence
-that the result is correct and traceable. Detailed size measurements and per-table notes are in
-`docs/gold-design.md`; machine-readable evidence stays in `results/part1/`. All counts below are from the
-run recorded in `results/part1/run.json` (run `a62b9db5`, code revision `f158c5e`).
+The pipeline reads the three supplied sources, builds the Silver and Gold tables, and exports two ML tables.
+Results are saved in `results/part1/`, with run details in `results/part1/run.json`.
+The counts below are for the supplied data.
 
 ## 1. Source discovery and row meanings
 
@@ -25,7 +23,7 @@ Findings that shaped the design:
   pattern is a shared entity rather than an attribute of one row. Every aggregate must be weighted by `quantity`.
 - **Google.** Four distance-three experiments at different processor centres and one distance-five experiment,
   all X basis, 25 rounds and 50,000 shots, giving 250,000 shots. Per shot there are packed measurements, sweep
-  bits and detector events (200 detector bits at d=3, 25 rounds of 8 stabilizers; 600 at d=5), one actual logical
+  bits and detector events (200 detector bits at d=3; 600 at d=5), one actual logical
   flip and four decoder predictions. Records in `b8` files are byte-aligned and little-endian within a byte; the
   expected length is `shots * ceil(bits / 8)` from `properties.yml`. Measurements, detector events (changes
   between rounds), the actual flip, a decoder prediction and a decoder error (prediction differs from the actual
@@ -112,6 +110,9 @@ including a deterministic `example_id` (md5 of experiment + pattern + label, or 
 | Shared `experiment` table for simulated and hardware experiments | common vocabulary (distance, rounds, checks) with a `kind` column and CHECK rules per kind; no column links the two kinds | some nullable kind-specific columns |
 | Gold keys reuse Silver `source_record_id` where the grain matches | one join from any Gold row to `source_trace.parquet` | 32-character text keys |
 | All-or-nothing load | `gold_build` is created, filled with binary COPY, checked by 9 cross-table integrity queries, then swapped for `gold` in one transaction; any failure rolls back and the previous Gold stays | about 21 s per full load |
+
+We measured all three options on the same 250,000 shots using `pg_total_relation_size` in PostgreSQL 16.9.
+The sizes include indexes, the other shot columns and `detector_summary`.
 
 **Investigated and rejected: joining simulated syndromes to hardware shots.** Both sources are distance-three
 surface codes with a logical-error label, and "syndrome" and "detector event" sound alike, so a join on distance
@@ -226,7 +227,7 @@ the `decoder_outcome` view over `decoder_prediction` and `shot` with `experiment
 | 3 | (7, 5) | 0.3884 | 0.4130 | 0.4299 | 0.3887 |
 | 5 | (5, 5) | 0.4015 | 0.4257 | 0.4510 | 0.3955 |
 
-The decoder ranking is the same at every location: tensor network contraction and belief matching are lowest,
+Tensor network contraction and belief matching have the two lowest error rates at every location,
 then correlated matching, and PyMatching is highest. The d=3 locations differ by up to about 3 percentage points
 for the same decoder, and the single d=5 experiment is not lower than the best d=3 locations. With one d=5
 experiment at one location this cannot be separated from location effects, so we do not draw a conclusion about
@@ -256,3 +257,7 @@ two benchmarks contribute circuits and registers but no explicit parity checks.
   absence of reject or warning rows and the reconciled counts above.
 - `detector_summary` supports per-position questions per experiment, but per-shot, per-position filtering needs
   unpacking outside SQL.
+
+## AI usage
+
+We used AI to check and improve our approach and to review and edit the code and reports.

@@ -35,6 +35,19 @@ def test_metrics_use_physical_weights():
     assert m['brier_score'] == pytest.approx(.09)
 
 
+@pytest.mark.parametrize('source', ['syndrome', 'google'])
+def test_contract_rejects_missing_columns_and_wrong_types(tmp_path, source):
+    ml = tmp_path / 'ml'
+    inputs(ml)
+    name = f'ml_{source}_decoder_example'
+    table = pq.read_table(ml / f'{name}.parquet')
+    validate(table, name)
+    with pytest.raises(ValueError, match='columns or types'):
+        validate(table.drop(['example_id']), name)
+    with pytest.raises(ValueError, match='columns or types'):
+        validate(table.set_column(0, 'example_id', table['example_id'].cast(pa.large_string())), name)
+
+
 def test_contract_rejects_wrong_split_and_duplicate_ids(tmp_path):
     rows = inputs(tmp_path / 'ml')
     rows[0]['data_split'] = 'test'
